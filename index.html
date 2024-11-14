@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Random Points with Wireframes and Orbit Controls</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.131.3/build/three.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.0/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.131.3/examples/js/controls/OrbitControls.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/fflate/umd/index.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/three@0.131.3/examples/js/loaders/FBXLoader.js"></script>
+    <script>
+
+
+
+	
+	let scene, camera, renderer, controls;
+	latitudes = []
+	longitudes = []
+	let key = "";
+	let test;
+
+	async function getBaseData(){
+		const response = await fetch('https://thingproxy.freeboard.io/fetch/https://aggiespirit.ts.tamu.edu/RouteMap/GetBaseData/', {
+		method: 'POST',
+		headers: {
+			'Accept': 'application/json, text/javascript, */*; q=0.01',
+			'Accept-Language': 'en-US,en;q=0.9',
+			'Connection': 'keep-alive',
+			'Content-Length': '0',
+			'Cookie': 'ps_rvm_UrFx=%7B%22pssid%22%3A%22ZQ7qMUSVKxUzKtDe-1715927848330%22%2C%22last-visit%22%3A%221715927873376%22%7D; .MyRide.cookiePolicy=a=1; .MyRide.RequestVerificationToken=rlvCbHCI7wry63mYhJZj9xcAMN68389DygKRhYHrr15OUnEjbcSnjleGk3HvU2nzSLeT1p0yF5Ew8yDMJCyH5mdthrAn4W-eG1OURCL_YQ01; TSSESSIONID=1906518114.1.1747916272.1425079296',
+			'DNT': '1',
+			'Origin': 'https://aggiespirit.ts.tamu.edu',
+			'Referer': 'https://aggiespirit.ts.tamu.edu/RouteMap',
+			'Sec-Fetch-Dest': 'empty',
+			'Sec-Fetch-Mode': 'cors',
+			'Sec-Fetch-Site': 'same-origin',
+			'User-Agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+			'X-Requested-With': 'XMLHttpRequest',
+			'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+			'sec-ch-ua-mobile': '?1',
+			'sec-ch-ua-platform': '"Android"'
+		}
+		});
+
+		const data = await response.json();
+
+		const params = new Proxy(new URLSearchParams(window.location.search), {
+		get: (searchParams, prop) => searchParams.get(prop),
+		});
+		// Get the value of "some_key" in eg "https://example.com/?some_key=some_value"
+		let value = params.bus; // "some_value"
+
+
+		for(var i = 0; i < data['routes'].length; i++){
+			if(data['routes'][i]['shortName'] == value){
+				key = data['routes'][i]['key']; 
+				break;
+			}
+		}
+
+		if(key == ""){ //default to first route
+			key = data['routes'][0]['key']
+		}
+
+		
+	}
+	
+	function parse(data) {
+
+		console.log(data[0]['patternPaths'])
+		
+		for(var i = 0; i < data[0]['patternPaths'].length; i++){
+			console.log(data[0]['patternPaths'][i]['patternPoints'])
+			for(var j = 0; j < data[0]['patternPaths'][i]['patternPoints'].length; j++) {
+		
+
+				console.log(typeof data[0]['patternPaths'][i]['patternPoints'][j]['latitude'])
+
+				latitudes.push(data[0]['patternPaths'][i]['patternPoints'][j]['latitude'])
+				longitudes.push(data[0]['patternPaths'][i]['patternPoints'][j]['longitude'])
+				
+				
+			}
+		}
+
+		//multiply by 100000 to get the points to show up on the grid
+		latitudes = latitudes.map(x => x * 10000)
+		longitudes = longitudes.map(x => x * 10000)
+
+		init();
+		animate();
+		fetchAndMoveBox();
+
+	}
+
+	function getPaths(){
+		fetch('https://thingproxy.freeboard.io/fetch/https://aggiespirit.ts.tamu.edu/RouteMap/GetPatternPaths/', {
+		method: 'POST',
+		headers: {
+			'Accept': 'application/json, text/javascript, */*; q=0.01',
+			'Accept-Language': 'en-US,en;q=0.9',
+			'Connection': 'keep-alive',
+			'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+			'DNT': '1',
+			'Origin': 'https://aggiespirit.ts.tamu.edu',
+			'Referer': 'https://aggiespirit.ts.tamu.edu/RouteMap',
+			'Sec-Fetch-Dest': 'empty',
+			'Sec-Fetch-Mode': 'cors',
+			'Sec-Fetch-Site': 'same-origin',
+			'User-Agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+			'X-Requested-With': 'XMLHttpRequest',
+			'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+			'sec-ch-ua-mobile': '?1',
+			'sec-ch-ua-platform': '"Android"'
+		},
+		body: new URLSearchParams({
+			'routeKeys[]': key
+		})
+		})
+		.then(response => response.json())
+		.then(data => parse(data))
+		.then(turnOffLoadingScreen())
+		.catch(error => console.error('Error:', error));
+
+	}
+
+	function init() {
+		// Create a scene
+		scene = new THREE.Scene();
+		
+		// Create a camera
+		camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+		
+		// Create a renderer
+		renderer = new THREE.WebGLRenderer({ logarithmicDepthBuffer: true } );
+		renderer.setSize(window.innerWidth, window.innerHeight);
+		document.body.appendChild(renderer.domElement);
+
+
+		camera.position.set(Math.min(...latitudes), 200, Math.min(...longitudes));
+		let centerLatitude = (Math.max(...latitudes) + Math.min(...latitudes)) / 2
+		let centerLongitude = (Math.max(...longitudes) + Math.min(...longitudes)) / 2
+
+		
+		
+		// Add OrbitControls
+		controls = new THREE.OrbitControls(camera, renderer.domElement);
+		controls.rotateSpeed = 0.1; // default is 1
+		controls.zoomSpeed = 0.1; // default is 1.2
+		controls.panSpeed = .1; // default is 0.3
+
+		controls.target = new THREE.Vector3(centerLatitude, 0, centerLongitude);
+
+
+		n = 10000;
+		const gridHelper = new THREE.GridHelper(n, n/12);
+		gridHelper.position.set(Math.min(...latitudes), 0, Math.max(...longitudes)); //TODO: to the cam add an offset 
+		scene.add(gridHelper);
+
+		const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+		scene.add(ambientLight);
+		
+		// Generate and add points with wireframes
+		const numPoints = 10;
+		var geometry = new THREE.SphereGeometry(1, 32, 32);
+		var material = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
+		
+		points=[]
+
+		for(var i = 0; i < latitudes.length; i++) {
+			const sphere = new THREE.Mesh(geometry, material);
+			sphere.position.set(latitudes[i], 0, longitudes[i]);
+			scene.add(sphere);
+			points.push(new THREE.Vector3(latitudes[i], 0, longitudes[i]))
+		}
+
+		geometry = new THREE.BoxGeometry(2, 2, 4);
+		material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+		box = new THREE.Mesh(geometry, material);
+		scene.add(box);
+
+		for (let i = 0; i < points.length - 1; i++) {
+			const start = points[i];
+			const end = points[i + 1];
+			
+			// Create a curve between the points
+			const curve = new THREE.LineCurve3(start, end);
+			
+			// Create the tube geometry
+			const tubeGeometry = new THREE.TubeGeometry(curve, 20, 0.5, 8, false);
+			
+			// Create a material
+			material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+			
+			// Create the mesh
+			const tube = new THREE.Mesh(tubeGeometry, material);
+			
+			// Add the tube to the scene
+			scene.add(tube);
+		}
+
+		const raycaster = new THREE.Raycaster();
+		const mouse = new THREE.Vector2();
+
+		function onMouseClick(event) {
+			// Convert mouse position to normalized device coordinates (-1 to +1)
+			mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+			mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+			// Update the raycaster with the camera and mouse position
+			raycaster.setFromCamera(mouse, camera);
+
+			// Calculate objects intersecting the ray
+			const intersects = raycaster.intersectObjects(scene.children);
+
+			for (let i = 0; i < intersects.length; i++) {
+				console.log(intersects[i]['point'])
+
+			}
+		}
+
+		window.addEventListener('click', onMouseClick, false);
+
+
+		//================================================================================================
+		const boundingBox = new THREE.Box3().setFromPoints(points);
+
+		// Calculate center of the bounding box
+		const center = new THREE.Vector3();
+		boundingBox.getCenter(center);
+
+		// Calculate distances from center to each corner of the bounding box
+		const distances = [];
+		const corners = [boundingBox.min, new THREE.Vector3(boundingBox.min.x, 0, boundingBox.max.z), 
+						new THREE.Vector3(boundingBox.min.x, 0, boundingBox.min.z), 
+						new THREE.Vector3(boundingBox.min.x, 0, boundingBox.max.z),
+						new THREE.Vector3(boundingBox.max.x, 0, boundingBox.min.z),
+						new THREE.Vector3(boundingBox.max.x, 0, boundingBox.max.z), 
+						new THREE.Vector3(boundingBox.max.x, 0, boundingBox.min.z), boundingBox.max];
+
+		corners.forEach(corner => {
+			distances.push(center.distanceTo(corner));
+		});
+
+		// Find the maximum distance
+		var minHeight = Math.max(...distances);
+		minHeight = minHeight + 0;
+
+		console.log('Minimum height required:', minHeight);
+
+		// Set camera position and look at the center of the bounding box
+		camera.position.y = minHeight;
+		//================================================================================================
+
+		function alignModel(model) {
+			// Points in Blender coordinates
+			const blenderPoints = [
+				new THREE.Vector3(720, 31, 2003),
+				new THREE.Vector3(577, 31, 1847)
+			];
+
+			// Points in Three.js coordinates
+			const threeJsPoints = [
+				new THREE.Vector3(306226.28989615047, 0, -963407.9442550499),
+				new THREE.Vector3(306277.4178144648, 0.806432886919815, -963349.2038346449)
+			];
+
+			// Calculate centroids
+			const blenderCentroid = blenderPoints[0].clone().add(blenderPoints[1]).multiplyScalar(0.5);
+			const threeJsCentroid = threeJsPoints[0].clone().add(threeJsPoints[1]).multiplyScalar(0.5);
+
+			console.log(blenderCentroid)
+			console.log(threeJsCentroid)
+
+			// Calculate t	ranslation vector
+			const translation = threeJsCentroid.clone().sub(blenderCentroid);
+
+			// Calculate direction vectors
+			const blenderVector = new THREE.Vector3().subVectors(blenderPoints[0], blenderPoints[1]).normalize();
+			const threeJsVector = new THREE.Vector3().subVectors(threeJsPoints[0], threeJsPoints[1]).normalize();
+
+			// Calculate rotation axis and angle
+			const axis = new THREE.Vector3().crossVectors(blenderVector, threeJsVector).normalize();
+			const angle = Math.acos(blenderVector.dot(threeJsVector));
+
+			// Create the rotation quaternion
+			const quaternion = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+
+			// Calculate distances for scaling
+			const blenderDistance = blenderPoints[0].distanceTo(blenderPoints[1]);
+			const threeJsDistance = threeJsPoints[0].distanceTo(threeJsPoints[1]);
+
+			// Calculate scaling factor
+			const scale = threeJsDistance / blenderDistance;
+
+			console.log(translation)
+			console.log(scale)
+
+			// Apply transformations
+			model.position.add(translation);
+			//model.scale.set(scale, scale, scale);
+			//model.quaternion.premultiply(quaternion);
+
+			// Ensure the model is centered correctly
+			model.updateMatrixWorld();
+		}
+
+
+        }
+
+	async function fetchAndMoveBox() {
+	while (true) {
+		const newPosition = await fetchNewPosition();
+
+		// Use gsap to animate the box position smoothly
+		gsap.to(box.position, {
+			duration: 1.5, // Duration of the animation
+			x: newPosition.x,
+			y: newPosition.y,
+			z: newPosition.z,
+			ease: "power1.inOut" // Easing function
+		});
+		box.rotation.y = newPosition.heading * Math.PI / 180;
+
+		// Wait for 2 seconds before fetching the next position
+		await new Promise(resolve => setTimeout(resolve, 2000));
+	}
+}
+
+	async function fetchNewPosition() {
+	try {
+		const response = await fetch('https://thingproxy.freeboard.io/fetch/https://aggiespirit.ts.tamu.edu/RouteMap/GetVehicles/', {
+			method: 'POST',
+			headers: {
+				'Accept': 'application/json, text/javascript, */*; q=0.01',
+				'Accept-Language': 'en-US,en;q=0.9',
+				'Connection': 'keep-alive',
+				'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+				'Cookie': 'TSSESSIONID=1906518114.1.1747916272.1165249536; ps_rvm_UrFx=%7B%22pssid%22%3A%22ZQ7qMUSVKxUzKtDe-1715927848330%22%2C%22last-visit%22%3A%221715927873376%22%7D; .MyRide.RequestVerificationToken=kXaA7Ecd1GCo4h_lfi6KBHe6cNs04BVwmH5V5xGQdZFIubuCOBL759n7ENg9U_ExorI3bw3jx55PnPCxiN1ed1H_Z4VbyhcAKF6gx1FxFw41',
+				'DNT': '1',
+				'Origin': 'https://aggiespirit.ts.tamu.edu/RouteMap',
+				'Referer': 'https://aggiespirit.ts.tamu.edu/RouteMap',
+				'Sec-Fetch-Dest': 'empty',
+				'Sec-Fetch-Mode': 'cors',
+				'Sec-Fetch-Site': 'same-origin',
+				'User-Agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+				'X-Requested-With': 'XMLHttpRequest',
+				'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+				'sec-ch-ua-mobile': '?1',
+				'sec-ch-ua-platform': '"Android"'
+			},
+			body: new URLSearchParams({
+				'routeKeys[]': key
+			})
+		});
+
+		const data = await response.json();
+
+		
+
+		if (data == []){
+			return { x: 0, y: 0, z: 0 }; // Default position in case of error
+		}
+
+		// Extract coordinates
+		amountOfBuses = data[0]["vehiclesByDirections"][0]['vehicles'].length
+		const latitude = data[0]["vehiclesByDirections"][0]['vehicles'][0]['location']['latitude'];
+		const longitude = data[0]["vehiclesByDirections"][0]['vehicles'][0]['location']['longitude'];
+		const heading = data[0]["vehiclesByDirections"][0]['vehicles'][0]['location']['heading'];
+		const position = {
+			x: latitude * 10000,
+			y: 0,
+			z: longitude * 10000,
+			heading: heading
+		};
+
+		return position;
+
+	} catch (error) {
+		console.error('Error fetching position data:', error);
+		return { x: 0, y: 0, z: 0 }; // Default position in case of error
+	}
+}
+
+	function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); // Update controls each frame
+            renderer.render(scene, camera);
+        }
+
+	function turnOnLoadingScreen() {
+		// Create a new div element
+		const loadingDiv = document.createElement('div');
+		
+		// Set its text content
+		loadingDiv.textContent = 'Loading...';
+		
+		// Style the div to position it in the middle of the screen
+		loadingDiv.style.position = 'fixed';
+		loadingDiv.style.top = '50%';
+		loadingDiv.style.left = '50%';
+		loadingDiv.style.transform = 'translate(-50%, -50%)';
+		loadingDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+		loadingDiv.style.color = 'white';
+		loadingDiv.style.padding = '20px';
+		loadingDiv.style.borderRadius = '10px';
+		loadingDiv.style.zIndex = '1000';
+		
+		// Set an id for the div for future reference
+		loadingDiv.id = 'loading-screen';
+		
+		// Append the div to the body
+		document.body.appendChild(loadingDiv);
+	}
+
+	function turnOffLoadingScreen() {
+		// Remove the loading screen div
+		const loadingDiv = document.getElementById('loading-screen');
+		if (loadingDiv) {
+			document.body.removeChild(loadingDiv);
+		}
+	}
+
+	turnOnLoadingScreen();
+	getBaseData()
+	.then(data => getPaths())
+
+	
+        
+    </script>
+</body>
+</html>
